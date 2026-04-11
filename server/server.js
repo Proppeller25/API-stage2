@@ -16,7 +16,7 @@ app.get('/', (req, res) => {
 
 
 app.get('/api/classify', async (req, res) => {
-  const start = Date.now()
+
   try {
     const { name } = req.query
     res.setHeader('Access-Control-Allow-Origin', '*')
@@ -29,10 +29,9 @@ app.get('/api/classify', async (req, res) => {
 
     const UTCDate = new Date().toISOString()
 
-    const externalStart = Date.now()
     const apiRes = await fetch(`https://api.genderize.io?name=${encodeURIComponent(name)}`)
+
     const apiData = await apiRes.json()
-    const externalEnd = Date.now()
 
     if (!apiData.gender || !apiData.count) 
       return res.status(404).json({ status: "error", message: "No apiData or prediction available for the provided name" })
@@ -46,19 +45,9 @@ app.get('/api/classify', async (req, res) => {
       processedAt: UTCDate
     }
 
-    const internalEnd = Date.now();
-    const fullResponseTimeMs = internalEnd - start;
-
     res.status(200).json({
       status: "success",
-      data: response,
-      timings: {
-        externalLatencyMs: externalEnd - externalStart,
-        totalHandlerMs: internalEnd - start,
-        internalOnlyMs: (internalEnd - start) - (externalEnd - externalStart),
-        postApiProcessingMs: internalEnd - externalEnd,
-        fullResponseTimeMs
-      }
+      data: response
     })
 
   } catch (error) {
