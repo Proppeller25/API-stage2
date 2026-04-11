@@ -36,14 +36,14 @@ app.get('/api/classify', async (req, res) => {
       return res.status(404).json({ status: "error", message: "No apiData or prediction available for the provided name" })
     
     const UTCDate = new Date().toISOString()
-    
+
     const response = {
       name,
       gender: apiData?.gender,
       probability: apiData?.probability,
-      sampleSize: apiData?.count,
-      isConfident: apiData?.probability >= 0.7 && apiData?.count >= 100,
-      processedAt: UTCDate
+      sample_Size: apiData?.count,
+      is_confident: apiData?.probability >= 0.7 && apiData?.count >= 100,
+      processed_at: UTCDate
     }
 
     res.status(200).json({
