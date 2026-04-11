@@ -27,15 +27,16 @@ app.get('/api/classify', async (req, res) => {
     if (typeof name !== "string")
       return res.status(422).json({ status: "error", message: "Name is not a string" })
 
-    const UTCDate = new Date().toISOString()
-
+    
     const apiRes = await fetch(`https://api.genderize.io?name=${encodeURIComponent(name)}`)
-
+    
     const apiData = await apiRes.json()
-
+    
     if (!apiData.gender || !apiData.count) 
       return res.status(404).json({ status: "error", message: "No apiData or prediction available for the provided name" })
-
+    
+    const UTCDate = new Date().toISOString()
+    
     const response = {
       name,
       gender: apiData?.gender,
