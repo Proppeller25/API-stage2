@@ -1,65 +1,79 @@
 # Gender Classification API
 
-A simple Express.js API that predicts the gender of a given first name using the [Genderize.io](https://api.genderize.io) service. The API is optimized for deployment on **Vercel** as a serverless function, but can also run locally.
+An Express.js API that predicts gender from a first name and can also create a stored profile with gender, age, and country data. The project is set up for local development with `dotenv` and deployment on Vercel.
 
 ## Features
 
-- Accepts a `name` query parameter
-- Returns gender, probability, sample size, and a confidence flag
-- Handles missing or invalid input gracefully
-- CORS enabled for cross‑origin requests
-- Ready for Vercel deployment (serverless)
+- `GET /api/classify` returns gender prediction data for a name
+- `POST /api/profiles` fetches gender, age, and country data, then saves a profile to MongoDB
+- CORS enabled for browser access
+- Uses `Genderize.io`, `Agify.io`, and `Nationalize.io`
+- Ready for Vercel deployment
 
-## Tech Stack
+## Stack
 
 - Node.js
-- Express.js
-- CORS
-- Genderize.io API
-- Vercel (deployment)
+- Express
+- MongoDB with Mongoose
+- dotenv
+- Vercel
 
----
+## Project Structure
 
-## Getting Started (Local Development)
+```text
+.
+|-- README.md
+|-- vercel.json
+`-- server
+    |-- models
+    |   `-- dataModel.js
+    |-- package.json
+    `-- server.js
+```
 
-### 1. Clone or create the project folder
+## Local Setup
+
+1. Install dependencies inside the `server` folder:
 
 ```bash
-mkdir gender-API
-cd gender-API
+cd server
+npm install
 ```
 
-### 2. Initialize a Node.js project
+2. Create a local `.env` file in `server/`:
+
+```env
+MONGODB_URI=your_mongodb_connection_string
+ENVIRONMENT=development
+PORT=3000
+```
+
+3. Start the API:
 
 ```bash
-npm init -y
+npm start
 ```
 
-### 3. Install dependencies
+4. Test locally:
 
-```bash
-npm install express cors
+```text
+GET http://localhost:3000/api/classify?name=john
+POST http://localhost:3000/api/profiles?name=john
 ```
 
-### 4. Create the files
+## API Endpoints
 
-Create `server.js` and `vercel.json` in the root folder. Use the code provided in the next section.
+### `GET /api/classify`
 
-### 5. Run the server locally
+Predicts gender for a given first name.
 
-```bash
-node server.js
-```
+#### Query Parameters
 
-The server will start on `http://localhost:3000`.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | First name to classify |
 
-Test the endpoint:
-
-```
-http://localhost:3000/api/classify?name=john
-```
-
-You should see a JSON response like:
+#### Success Response
 
 ```json
 {
@@ -68,108 +82,14 @@ You should see a JSON response like:
     "name": "john",
     "gender": "male",
     "probability": 0.99,
-    "sampleSize": 12345,
-    "isConfident": true,
-    "processedAt": "2025-01-15T10:30:00.000Z"
+    "sample_Size": 12345,
+    "is_confident": true,
+    "processed_at": "2026-04-14T12:00:00.000Z"
   }
 }
 ```
 
-
-### `package.json`
-
-Make sure your `package.json` includes these dependencies:
-
-```json
-{
-  "name": "gender-api",
-  "version": "1.0.0",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "cors": "^2.8.5"
-  }
-}
-```
-
----
-
-## Deploy to Vercel
-
-You can deploy this API for free using Vercel. Two methods:
-
-### Method 1: Vercel CLI
-
-1. Install Vercel CLI globally:
-   ```bash
-   npm i -g vercel
-   ```
-
-2. Login:
-   ```bash
-   vercel login
-   ```
-
-3. From your project folder, run:
-   ```bash
-   vercel
-   ```
-   Follow the prompts (accept defaults for a new project).
-
-4. For production:
-   ```bash
-   vercel --prod
-   ```
-
-### Method 2: GitHub + Vercel Dashboard
-
-1. Push your code to a GitHub repository.
-2. Go to [vercel.com](https://vercel.com), click **Add New → Project**.
-3. Import your GitHub repo.
-4. Click **Deploy** – Vercel automatically detects the configuration.
-
-After deployment, your API will be available at:
-
-```
-https://your-project.vercel.app/api/classify?name=alex
-```
-
----
-
-## API Documentation
-
-### Endpoint
-
-```
-GET /api/classify
-```
-
-### Query Parameter
-
-| Parameter | Type   | Required | Description                  |
-|-----------|--------|----------|------------------------------|
-| `name`    | string | Yes      | First name to classify       |
-
-### Response (Success – 200)
-
-```json
-{
-  "status": "success",
-  "data": {
-    "name": "john",
-    "gender": "male",
-    "probability": 0.99,
-    "sampleSize": 12345,
-    "isConfident": true,
-    "processedAt": "2025-01-15T10:30:00.000Z"
-  }
-}
-```
-
-### Response (Client Error – 400)
+#### Error Responses
 
 ```json
 {
@@ -178,58 +98,165 @@ GET /api/classify
 }
 ```
 
-### Response (Not Found – 404)
+```json
+{
+  "status": "error",
+  "message": "Name is not a string"
+}
+```
 
 ```json
 {
   "status": "error",
-  "message": "No prediction available for the provided name"
+  "message": "No apiData or prediction available for the provided name"
 }
 ```
 
-### Response (Server Error – 500)
+### `POST /api/profiles`
+
+Creates and stores a profile in MongoDB using the provided `name`.
+
+Important: this endpoint currently reads `name` from the query string, not from a JSON request body.
+
+#### Query Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | First name used to generate a profile |
+
+#### Example Request
+
+```text
+POST /api/profiles?name=john
+```
+
+#### Success Response
+
+```json
+{
+  "status": "success",
+  "data": {
+    "_id": "generated-uuid",
+    "name": "john",
+    "gender": "male",
+    "gender_probability": 0.99,
+    "sample_size": 12345,
+    "age": 34,
+    "age_group": "adult",
+    "country_id": "US",
+    "country_probability": 0.12,
+    "createdAt": "2026-04-14T12:00:00.000Z",
+    "updatedAt": "2026-04-14T12:00:00.000Z",
+    "__v": 0
+  }
+}
+```
+
+#### Existing Profile Response
+
+```json
+{
+  "status": "success",
+  "message": "Profile already exists",
+  "data": {
+    "_id": "generated-uuid",
+    "name": "john"
+  }
+}
+```
+
+#### Possible Error Responses
 
 ```json
 {
   "status": "error",
-  "error": "An error occurred while processing the request."
+  "message": "No gender prediction available for the provided name"
 }
 ```
 
----
+```json
+{
+  "status": "error",
+  "message": "No age prediction available for the provided name"
+}
+```
 
-## Environment Variables (Optional)
+```json
+{
+  "status": "error",
+  "message": "No country data available for the provided name"
+}
+```
 
-No API keys are required for the Genderize.io free tier. If you later switch to a paid plan, you can add an API key using Vercel environment variables.
+## Environment Variables
 
-Add a variable in Vercel:
+### Local development
+
+Create `server/.env` and keep it out of git. This repo already ignores `.env` files.
+
+```env
+MONGODB_URI=your_mongodb_connection_string
+ENVIRONMENT=development
+PORT=3000
+```
+
+### Vercel deployment
+
+You do not upload the `.env` file itself to Vercel. Instead, add the same key/value pairs as Vercel project environment variables.
+
+If you already deployed, do this:
+
+1. Open your project on Vercel.
+2. Go to `Settings`.
+3. Open `Environment Variables`.
+4. Add the variables your app needs:
+
+```env
+MONGODB_URI=your_mongodb_connection_string
+ENVIRONMENT=production
+```
+
+5. Save the variables.
+6. Redeploy the project so the existing deployment picks up the new values.
+
+Notes:
+
+- `MONGODB_URI` is required because the app connects to MongoDB on startup.
+- `ENVIRONMENT=production` prevents `app.listen(...)` from running inside Vercel.
+- You usually do not need to add `PORT` on Vercel.
+- If you change a variable after deployment, redeploy again.
+
+### Vercel CLI option
+
+If you prefer CLI, run this from the linked project directory:
 
 ```bash
-vercel env add GENDERIZE_API_KEY
+vercel env add MONGODB_URI
+vercel env add ENVIRONMENT
 ```
 
-Then use it inside `server.js` (not needed for this basic version).
+Then redeploy:
 
----
+```bash
+vercel --prod
+```
+
+## Example Deployed URLs
+
+```text
+GET  https://your-project.vercel.app/api/classify?name=alex
+POST https://your-project.vercel.app/api/profiles?name=alex
+```
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| `404` on `/api/classify` | Make sure you are using the exact path `/api/classify`. The root `/` returns a welcome message. |
-| CORS errors in browser | `app.use(cors())` already allows all origins. If you need to restrict, modify the CORS configuration. |
-| Function timeout on Vercel | Free tier has a 10s limit. Genderize.io is usually fast, but if the name database is huge, consider upgrading or adding a timeout. |
-| Local server works, Vercel fails | Ensure you exported the app with `module.exports = app` and that `vercel.json` is present. Possibly try to deploy using CLI it is more beginner friendly|
-
----
-
-## License
-
-MIT – free to use and modify.
-
----
+| Issue | What to check |
+|-------|---------------|
+| `500` on Vercel | Confirm `MONGODB_URI` is set in Vercel and the deployment was redeployed after adding it |
+| `404` on an endpoint | Confirm you are using `/api/classify` or `/api/profiles` exactly |
+| POST request is not saving | Make sure `name` is being sent in the query string |
+| Works locally but not on Vercel | Confirm `ENVIRONMENT=production` is set and MongoDB allows connections from Vercel |
 
 ## Author
 
-Created by Tamarauemomoemi Egbebo Github: @Proppeller.  
-For questions or contributions, open an issue on the GitHub repository.
+Created by Tamarauemomoemi Egbebo. GitHub: `@Proppeller`
