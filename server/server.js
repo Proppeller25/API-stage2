@@ -289,28 +289,7 @@ app.post('/api/profiles', async(req, res) => {
   }
 })
 
-app.get('/api/profiles/:id', async (req, res) => {
-  try{
-    const {id} = req.params
-    await connectDB()
-    res.setHeader('Access-Control-Allow-Origin', '*')
 
-    const foundData = await Profile.findById(id)
-
-    if(!foundData) return res.status(404).json({status: "error", message: "Profile not found"})
-
-    res.status(200).json({
-      status: "success",
-      data: formatProfile(foundData)
-    })
-
-  } catch(error) {
-    return res.status(500).json({
-      status: "error",
-      message: error.message || "Upstream or Server Failure"
-    })
-  }
-})
 
 app.get('/api/profiles', async (req, res) => {
   try{
@@ -321,7 +300,7 @@ app.get('/api/profiles', async (req, res) => {
     let sortOrder
     let sortQuery
     let skip
-    const maxPaqeLimit = 50
+    const maxPageLimit = 50
     const sortingOptions = ['created_at', 'age', 'gender_probability']
     const orderOptions = ['asc', 'desc']
 
@@ -352,14 +331,13 @@ app.get('/api/profiles', async (req, res) => {
       sortOrder = order === 'desc' ? -1 : 1
       sortQuery = { [sort_by]: sortOrder }
     }
-    if (page && limit) {
+    if (page) {
       const pageNumber = Number(page)
-      const limitNumber = Number(limit) > 50 ? maxPaqeLimit : Number(limit)
+      const limitNumber = Number(limit) > 50 ? maxPageLimit : Number(limit)
       skip = (pageNumber - 1) * limitNumber
     }
     
     
-
     const foundData = await Profile.find(filters).sort(sortQuery).skip(skip || 0).limit(Number(limit) || 0)
 
     if(!foundData || foundData.length === 0)
@@ -381,6 +359,146 @@ app.get('/api/profiles', async (req, res) => {
   }
 })
 
+app.get('/api/profiles/search', async (req, res) => {
+  try {
+    await connectDB()
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    const {q, page = 1, limit = 10 } = req.query
+    let skip
+    const maxPageLimit = 50
+
+    if (!q || q.trim().length === 0) return res.status(400).json({ status: "error", message: "Missing or empty search query" })
+    if(typeof q !== "string") return res.status(422).json({ status: "error", message: "Invalid query type" })
+
+    const words = q.toLowerCase().split(/\s+/)
+
+    const ageGroupMap = {
+      child: 'child',
+      teenager: 'teenager',
+      teens: 'teenager',
+      adult: 'adult',
+      senior: 'senior',
+      young:'teenager'
+    }
+    const genderMap = {
+      male: 'male',
+      males: 'male',
+      boy: 'male',
+      boys: 'male',
+      female: 'female',
+      females: 'female',
+      girl: 'female',
+      girls: 'female'
+    }
+
+    
+    const countryMap = {}
+
+    json.forEach(profile => {
+      const name = profile.country_name?.toLowerCase()
+      const id = profile.country_id
+      if (name && id && !countryMap[name]) {
+        countryMap[name] = id
+      }
+    })
+
+    const ageRangeMap = {
+      child: { min: 0, max: 12 },
+      teenager: { min: 13, max: 19 },
+      adult: { min: 20, max: 59 },
+      senior: { min: 60, max: 120 }
+    }
+
+    const filters = {}
+    let minAge = null;
+    let maxAge = null;
+    let hasAnyFilter = false
+
+/// loop for search query words and build filters based on matches with
+    for (const word of words) {
+      if (genderMap[word]) {
+        filters.gender = genderMap[word]
+        hasAnyFilter = true
+      }
+
+      if(ageGroupMap[word]) {
+        filters.age_group = ageGroupMap[word]
+        hasAnyFilter = true
+      }
+
+      if(countryMap[word]) {
+        filters.country_id = countryMap[word]
+        hasAnyFilter = true
+      }
+      if(ageRangeMap[word]){
+        const {min, max} = ageRangeMap[word]
+        minAge = min
+        maxAge = max
+        hasAnyFilter = true
+      }
+    }
+
+    if (minAge !== null || maxAge !== null) {
+      filters.age = {};
+      if (minAge !== null) filters.age.$gte = minAge;
+      if (maxAge !== null) filters.age.$lte = maxAge;
+    }
+
+    if(!hasAnyFilter) 
+      return res.status(400).json({ status: "error", message: "unable to interpret query" })
+
+    
+    if (page) {
+      const pageNumber = Number(page)
+      const limitNumber = Number(limit) > 50 ? maxPageLimit : Number(limit)
+      skip = (pageNumber - 1) * limitNumber
+    }
+
+    const foundData = await Profile.find(filters).skip(skip || 0).limit(Number(limit) || 0)
+    const total = await Profile.countDocuments(filters)
+
+
+    if(!foundData || foundData.length === 0)
+      return res.status(404).json({status: "error", message: "No profiles found matching the criteria"})
+
+    res.status(200).json({
+      status: "success",
+      page: Number(page) || 1,
+      limit: Number(limit) || foundData.length,
+      total,
+      data: foundData.map(formatProfile)
+    })
+
+  } catch (error){
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Upstream or Server Failure"
+    })
+  }
+})
+
+app.get('/api/profiles/:id', async (req, res) => {
+  try{
+    const {id} = req.params
+    await connectDB()
+    res.setHeader('Access-Control-Allow-Origin', '*')
+
+    const foundData = await Profile.findById(id)
+
+    if(!foundData) return res.status(404).json({status: "error", message: "Profile not found"})
+
+    res.status(200).json({
+      status: "success",
+      data: formatProfile(foundData)
+    })
+
+  } catch(error) {
+    return res.status(500).json({
+      status: "error",
+      message: error.message || "Upstream or Server Failure"
+    })
+  }
+})
 
 app.delete('/api/profiles/:id', async (req, res) => {
   try{

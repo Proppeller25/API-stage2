@@ -70,5 +70,5 @@ const profileModel = new mongoose.Schema({
   }
 }
 )
-console.log('✅ Profile model loaded')
+
 module.exports = mongoose.models.Profile || mongoose.model('Profile', profileModel)
