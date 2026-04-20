@@ -8,6 +8,7 @@ const json = require('./seed_profiles.json')
 require('dotenv').config()
 const importedDataModel = require('./models/profileModel')
 let connectionPromise = null
+const countryMap = {}
 
 const uuidv7 = () => {
   const bytes = crypto.randomBytes(16)
@@ -29,9 +30,16 @@ const uuidv7 = () => {
 const createDataModel = () => {
   const dataSchema = new mongoose.Schema(
     {
-      id: {
+      _id: {
         type: String,
         default: uuidv7,
+      },
+      id: {
+        type: String,
+        default: function () {
+          return this._id
+        },
+        unique: true
       },
       name: {
         type: String,
@@ -41,7 +49,7 @@ const createDataModel = () => {
       gender: {
         type: String,
         required: true,
-        enums: ['male', 'female']
+        enum: ['male', 'female']
       },
       gender_probability: {
         type: Number,
@@ -49,7 +57,6 @@ const createDataModel = () => {
       },
       sample_size: {
         type: Number,
-        required: false,
       },
       age: {
         type: Number,
@@ -58,15 +65,17 @@ const createDataModel = () => {
       age_group: {
         type: String,
         required: true,
-        enums: ['child', 'teenager', 'adult', 'senior']
+        enum: ['child', 'teenager', 'adult', 'senior']
       },
       country_id: {
         type: String,
         required: true,
+        minlength: 2,
+        maxlength: 2
       },
       country_name: {
         type: String,
-        required: false
+        required: true
       },
       country_probability: {
         type: Number,
@@ -76,10 +85,16 @@ const createDataModel = () => {
     {
       timestamps: {
         createdAt: 'created_at',
-        updatedAt: 'updated_at'
+        updatedAt: false
       },
     }
   )
+
+  dataSchema.index({ gender: 1 })
+  dataSchema.index({ age_group: 1 })
+  dataSchema.index({ country_id: 1 })
+  dataSchema.index({ age: 1 })
+  dataSchema.index({ created_at: -1 })
 
   return mongoose.models.Profile || mongoose.model('Profile', dataSchema)
 }
@@ -136,14 +151,19 @@ const connectDB = async () => {
     throw error
   }
 }
+
+const isValidNumber = (value) => !Number.isNaN(Number(value))
+const isValidProbability = (value) => isValidNumber(value) && Number(value) >= 0 && Number(value) <= 1
+const isValidPositiveInteger = (value) => Number.isInteger(Number(value)) && Number(value) > 0
+
 const formatProfile = (profile) => ({
   id: profile.id,
   name: profile.name,
   gender: profile.gender,
   gender_probability: profile.gender_probability,
-  sample_size: profile.sample_size,
   age: profile.age,
   age_group: profile.age_group,
+  sample_size: profile.sample_size,
   country_id: profile.country_id,
   country_name: profile.country_name || getCountryFullName(profile.country_id),
   country_probability: profile.country_probability,
@@ -165,6 +185,14 @@ const invalidExternalResponse = (res, externalApi) => (
     message: `${externalApi} returned an invalid response`
   })
 )
+
+json.forEach(profile => {
+  const name = profile.country_name?.toLowerCase()
+  const id = profile.country_id
+  if (name && id && !countryMap[name]) {
+    countryMap[name] = id
+  }
+})
 
 app.get('/', (req, res) => {
   res.json({ message: 'Hello from the server!' })
@@ -258,7 +286,7 @@ app.post('/api/profiles', async(req, res) => {
       name: normalizedName,
       gender:genderData.gender,
       gender_probability: genderData.probability,
-      sample_size:genderData.count,
+      sample_size: genderData.count,
       age:ageData.age,
       age_group: classifyAge(ageData.age),
       country_id: highestProbabilityCountry.country_id,
@@ -301,14 +329,38 @@ app.get('/api/profiles', async (req, res) => {
     let sortQuery
     let skip
     const maxPageLimit = 50
+    let maxLimit = Number(limit) > maxPageLimit ? maxPageLimit : Number(limit)
     const sortingOptions = ['created_at', 'age', 'gender_probability']
     const orderOptions = ['asc', 'desc']
+    const genderOptions = ['male', 'female']
+    const ageGroupOptions = ['child', 'teenager', 'adult', 'senior']
+
+    if (!isValidPositiveInteger(page) || !isValidPositiveInteger(limit))
+      return res.status(422).json({status: "error", message: "Invalid query parameters"})
+
+    if (gender && !genderOptions.includes(gender.trim().toLowerCase()))
+      return res.status(422).json({status: "error", message: "Invalid query parameters"})
+
+    if (age_group && !ageGroupOptions.includes(age_group.trim().toLowerCase()))
+      return res.status(422).json({status: "error", message: "Invalid query parameters"})
+
+    if (country_id && !/^[A-Za-z]{2}$/.test(country_id.trim()))
+      return res.status(422).json({status: "error", message: "Invalid query parameters"})
+
+    if ((min_age && !isValidNumber(min_age)) || (max_age && !isValidNumber(max_age)))
+      return res.status(422).json({status: "error", message: "Invalid query parameters"})
+
+    if ((min_gender_probability && !isValidProbability(min_gender_probability)) || (min_country_probability && !isValidProbability(min_country_probability)))
+      return res.status(422).json({status: "error", message: "Invalid query parameters"})
+
+    if (min_age && max_age && Number(min_age) > Number(max_age))
+      return res.status(422).json({status: "error", message: "Invalid query parameters"})
 
     if (gender) {
       filters.gender = gender.trim().toLowerCase()
     }
     if (country_id) {
-      filters.country_id = country_id.trim()
+      filters.country_id = country_id.trim().toUpperCase()
     }
     if (age_group) {
       filters.age_group = age_group.trim().toLowerCase()
@@ -325,29 +377,25 @@ app.get('/api/profiles', async (req, res) => {
     if (min_country_probability) filters.country_probability = { $gte: Number(min_country_probability)}
 
     if (sort_by) {
-      if (!sortingOptions.includes(sort_by)) return res.status(400).json({status: "error", message: `Invalid sort_by value. Allowed values are: ${sortingOptions.join(', ')}`})
-      if (order && !orderOptions.includes(order)) return res.status(400).json({status: "error", message: `Invalid order value. Allowed values are: ${orderOptions.join(', ')}`})
+      if (!sortingOptions.includes(sort_by)) return res.status(422).json({status: "error", message: "Invalid query parameters"})
+      if (order && !orderOptions.includes(order)) return res.status(422).json({status: "error", message: "Invalid query parameters"})
 
       sortOrder = order === 'desc' ? -1 : 1
       sortQuery = { [sort_by]: sortOrder }
     }
     if (page) {
       const pageNumber = Number(page)
-      const limitNumber = Number(limit) > 50 ? maxPageLimit : Number(limit)
-      skip = (pageNumber - 1) * limitNumber
+      skip = (pageNumber - 1) * maxLimit
     }
     
-    
-    const foundData = await Profile.find(filters).sort(sortQuery).skip(skip || 0).limit(Number(limit) || 0)
-
-    if(!foundData || foundData.length === 0)
-      return res.status(404).json({status: "error", message: "No profiles found matching the criteria"})
+    const foundData = await Profile.find(filters).sort(sortQuery).skip(skip || 0).limit(maxLimit || 10)
+    const total = await Profile.countDocuments(filters)
 
     res.status(200).json({
       status: "success",
       page: Number(page) || 1,
-      limit: Number(limit) || foundData.length,
-      total: foundData.length,
+      limit: maxLimit || 10,
+      total,
       data: foundData.map(formatProfile)
     })
 
@@ -369,10 +417,13 @@ app.get('/api/profiles/search', async (req, res) => {
     let maxLimit = Number(limit) > maxPageLimit ? maxPageLimit : Number(limit)
 
     if (!q || q.trim().length === 0) return res.status(400).json({ status: "error", message: "Missing or empty search query" })
-    if(typeof q !== "string") return res.status(422).json({ status: "error", message: "Invalid query type" })
+    if(typeof q !== "string") return res.status(422).json({ status: "error", message: "Invalid query parameters" })
+    if (!isValidPositiveInteger(page) || !isValidPositiveInteger(limit)) return res.status(422).json({ status: "error", message: "Invalid query parameters" })
 
     const words = q.toLowerCase().split(/\s+/)
     const aboveMatch = q.match(/above (\d+)/)
+
+    if (q.toLowerCase().includes('above') && !aboveMatch) return res.status(422).json({ status: "error", message: "Invalid query parameters" })
 
     let hasMale = false
     let hasFemale = false
@@ -395,17 +446,6 @@ app.get('/api/profiles/search', async (req, res) => {
       girl: 'female',
       girls: 'female'
     }
-
-    
-    const countryMap = {}
-
-    json.forEach(profile => {
-      const name = profile.country_name?.toLowerCase()
-      const id = profile.country_id
-      if (name && id && !countryMap[name]) {
-        countryMap[name] = id
-      }
-    })
 
     const ageRangeMap = {
       child: { min: 0, max: 12 },
@@ -443,15 +483,19 @@ app.get('/api/profiles/search', async (req, res) => {
         maxAge = max
         hasAnyFilter = true
       }
-      //  if(typeof Number(word) === 'number') {
-      //   maxAge = Number(word)
-      //   console.log(true)
-      //   hasAnyFilter = true
-      //  }
     }
+
+    const fromMatch = q.toLowerCase().match(/from\s+([a-z ]+)/)
+    if (fromMatch) {
+      const countryName = fromMatch[1].trim()
+      if (countryMap[countryName]) {
+        filters.country_id = countryMap[countryName]
+        hasAnyFilter = true
+      }
+    }
+
     if(hasFemale && hasMale) {
-      filters.gender = { $in:['male', 'female']}
-      hasAnyFilter = true
+      delete filters.gender
     }
     else if(hasMale) {
       filters.gender =  'male'
@@ -477,7 +521,7 @@ app.get('/api/profiles/search', async (req, res) => {
     }
 
     if(!hasAnyFilter) 
-      return res.status(400).json({ status: "error", message: "unable to interpret query" })
+      return res.status(400).json({ status: "error", message: "Unable to interpret query" })
 
     
     if (page) {
@@ -488,14 +532,10 @@ app.get('/api/profiles/search', async (req, res) => {
     const foundData = await Profile.find(filters).skip(skip || 0).limit(maxLimit || 0)
     const total = await Profile.countDocuments(filters)
 
-
-    if(!foundData || foundData.length === 0)
-      return res.status(404).json({status: "error", message: "No profiles found matching the criteria"})
-
     res.status(200).json({
       status: "success",
       page: Number(page) || 1,
-      limit: maxLimit || foundData.length,
+      limit: maxLimit || 10,
       total,
       data: foundData.map(formatProfile)
     })
@@ -514,7 +554,7 @@ app.get('/api/profiles/:id', async (req, res) => {
     await connectDB()
     res.setHeader('Access-Control-Allow-Origin', '*')
 
-    const foundData = await Profile.findById(id)
+    const foundData = await Profile.findOne({ id })
 
     if(!foundData) return res.status(404).json({status: "error", message: "Profile not found"})
 
@@ -537,7 +577,7 @@ app.delete('/api/profiles/:id', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*')
     await connectDB()
 
-    const deletedData = await Profile.findByIdAndDelete(id) 
+    const deletedData = await Profile.findOneAndDelete({ id }) 
 
     if(!deletedData) return res.status(404).json({status: "error", message: "Profile not found"})
 
@@ -551,11 +591,13 @@ app.delete('/api/profiles/:id', async (req, res) => {
   }
 })
 
-if (process.env.ENVIRONMENT !== 'production') {
+if (require.main === module && process.env.ENVIRONMENT !== 'production') {
   connectDB()
   .then(() => {
     console.log('Connected to database')
     app.listen(PORT, () => console.log(`Local server running on port ${PORT}`))
+  }).then(() => {
+    seedData()
   })
   .catch((error) => {
     console.error('Database connection failed:', error.message)
@@ -563,17 +605,37 @@ if (process.env.ENVIRONMENT !== 'production') {
 }
 
 const seedData = async () => {
-  try {
-    await connectDB()
-    await Profile.deleteMany({})
-    await Profile.insertMany(json)
-    console.log('Data seeded successfully')
-  } catch (error) {
-    console.error('Error seeding data:', error)
+  await connectDB()
+
+  const allNames = json.map(profile => profile.name.trim().toLowerCase())
+  const existingProfiles = await Profile.find({ name: { $in: allNames } }).select('name')
+  const existingNames = existingProfiles.map(profile => profile.name)
+  const profilesToInsert = []
+
+  for (const profile of json) {
+    const normalizedName = profile.name.trim().toLowerCase()
+
+    if (!existingNames.includes(normalizedName)) {
+      profilesToInsert.push({
+        name: normalizedName,
+        gender: profile.gender,
+        gender_probability: profile.gender_probability,
+        age: profile.age,
+        age_group: profile.age_group,
+        country_id: profile.country_id,
+        country_name: profile.country_name,
+        country_probability: profile.country_probability
+      })
+    }
+  }
+
+  if (profilesToInsert.length > 0) {
+    await Profile.insertMany(profilesToInsert)
+    console.log(`${profilesToInsert.length} profiles inserted`)
   }
 }
 
-seedData()
+app.seedData = seedData
 
 
 module.exports = app

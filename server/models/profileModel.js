@@ -1,6 +1,5 @@
 const mongoose = require('mongoose')
 const crypto = require('crypto')
-const { type } = require('os')
 
 const uuidv7 = () => {
   const bytes = crypto.randomBytes(16)
@@ -20,9 +19,16 @@ const uuidv7 = () => {
 }
 
 const profileModel = new mongoose.Schema({
+  _id: {
+    type: String,
+    default: uuidv7,
+  },
   id: {
-    type: String,      
-    default: uuidv7
+    type: String,
+    default: function () {
+      return this._id
+    },
+    unique: true
   },
   name: {
     type: String,
@@ -32,16 +38,15 @@ const profileModel = new mongoose.Schema({
   gender: {
     type: String,
     required: true,
-    enums: ['male', 'female']
+    enum: ['male', 'female']
   },
   gender_probability: {
     type: Number,
     required: true
   },
-  sample_size:{
-    type: Number,
-    required: false
-  },
+  sample_size: {
+        type: Number,
+      },
   age:{
     type: Number,
     required: true
@@ -49,15 +54,17 @@ const profileModel = new mongoose.Schema({
   age_group:{
     type: String,
     required: true,
-    enums: ['child', 'teenager', 'adult', 'senior']
+    enum: ['child', 'teenager', 'adult', 'senior']
   },
   country_id:{
     type: String,
-    required: true
+    required: true,
+    minlength: 2,
+    maxlength: 2
   },
   country_name: {
     type: String,
-    required: false
+    required: true
   },
   country_probability:{
     type: Number,
@@ -71,10 +78,11 @@ const profileModel = new mongoose.Schema({
   }
 }
 )
-const q = 'above 30'
-const aboveMatch = q.match(/above (\d+)/)
-if (aboveMatch) {
-  const age = Number(aboveMatch[1])
-  console.log(`Age is above ${age}`, typeof age)
-}
+
+profileModel.index({ gender: 1 })
+profileModel.index({ age_group: 1 })
+profileModel.index({ country_id: 1 })
+profileModel.index({ age: 1 })
+profileModel.index({ created_at: -1 })
+
 module.exports = mongoose.models.Profile || mongoose.model('Profile', profileModel)
