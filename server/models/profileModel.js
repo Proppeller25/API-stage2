@@ -1,5 +1,6 @@
 const mongoose = require('mongoose')
 const crypto = require('crypto')
+const { type } = require('os')
 
 const uuidv7 = () => {
   const bytes = crypto.randomBytes(16)
@@ -70,5 +71,10 @@ const profileModel = new mongoose.Schema({
   }
 }
 )
-
+const q = 'above 30'
+const aboveMatch = q.match(/above (\d+)/)
+if (aboveMatch) {
+  const age = Number(aboveMatch[1])
+  console.log(`Age is above ${age}`, typeof age)
+}
 module.exports = mongoose.models.Profile || mongoose.model('Profile', profileModel)

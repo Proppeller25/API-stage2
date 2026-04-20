@@ -366,19 +366,24 @@ app.get('/api/profiles/search', async (req, res) => {
     const {q, page = 1, limit = 10 } = req.query
     let skip
     const maxPageLimit = 50
+    let maxLimit = Number(limit) > maxPageLimit ? maxPageLimit : Number(limit)
 
     if (!q || q.trim().length === 0) return res.status(400).json({ status: "error", message: "Missing or empty search query" })
     if(typeof q !== "string") return res.status(422).json({ status: "error", message: "Invalid query type" })
 
     const words = q.toLowerCase().split(/\s+/)
+    const aboveMatch = q.match(/above (\d+)/)
+
+    let hasMale = false
+    let hasFemale = false
 
     const ageGroupMap = {
       child: 'child',
       teenager: 'teenager',
+      teenagers: 'teenager',
       teens: 'teenager',
       adult: 'adult',
-      senior: 'senior',
-      young:'teenager'
+      senior: 'senior'
     }
     const genderMap = {
       male: 'male',
@@ -406,7 +411,8 @@ app.get('/api/profiles/search', async (req, res) => {
       child: { min: 0, max: 12 },
       teenager: { min: 13, max: 19 },
       adult: { min: 20, max: 59 },
-      senior: { min: 60, max: 120 }
+      senior: { min: 60, max: 120 },
+      young: {min: 16, max: 24}
     }
 
     const filters = {}
@@ -417,8 +423,8 @@ app.get('/api/profiles/search', async (req, res) => {
 /// loop for search query words and build filters based on matches with
     for (const word of words) {
       if (genderMap[word]) {
-        filters.gender = genderMap[word]
-        hasAnyFilter = true
+        if(genderMap[word] === 'male') hasMale = true
+        if(genderMap[word] === 'female') hasFemale = true
       }
 
       if(ageGroupMap[word]) {
@@ -430,12 +436,30 @@ app.get('/api/profiles/search', async (req, res) => {
         filters.country_id = countryMap[word]
         hasAnyFilter = true
       }
+
       if(ageRangeMap[word]){
         const {min, max} = ageRangeMap[word]
         minAge = min
         maxAge = max
         hasAnyFilter = true
       }
+      //  if(typeof Number(word) === 'number') {
+      //   maxAge = Number(word)
+      //   console.log(true)
+      //   hasAnyFilter = true
+      //  }
+    }
+    if(hasFemale && hasMale) {
+      filters.gender = { $in:['male', 'female']}
+      hasAnyFilter = true
+    }
+    else if(hasMale) {
+      filters.gender =  'male'
+      hasAnyFilter = true
+    }
+    else if(hasFemale) {
+      filters.gender = 'female'
+      hasAnyFilter = true
     }
 
     if (minAge !== null || maxAge !== null) {
@@ -444,17 +468,24 @@ app.get('/api/profiles/search', async (req, res) => {
       if (maxAge !== null) filters.age.$lte = maxAge;
     }
 
+    if(aboveMatch) {
+      const age = Number(aboveMatch[1])
+      minAge = minAge !== null ? Math.max(minAge, age) : age
+      filters.age = filters.age || {}
+      filters.age.$gte = minAge
+      hasAnyFilter = true
+    }
+
     if(!hasAnyFilter) 
       return res.status(400).json({ status: "error", message: "unable to interpret query" })
 
     
     if (page) {
       const pageNumber = Number(page)
-      const limitNumber = Number(limit) > 50 ? maxPageLimit : Number(limit)
-      skip = (pageNumber - 1) * limitNumber
+      skip = (pageNumber - 1) * maxLimit
     }
 
-    const foundData = await Profile.find(filters).skip(skip || 0).limit(Number(limit) || 0)
+    const foundData = await Profile.find(filters).skip(skip || 0).limit(maxLimit || 0)
     const total = await Profile.countDocuments(filters)
 
 
@@ -464,7 +495,7 @@ app.get('/api/profiles/search', async (req, res) => {
     res.status(200).json({
       status: "success",
       page: Number(page) || 1,
-      limit: Number(limit) || foundData.length,
+      limit: maxLimit || foundData.length,
       total,
       data: foundData.map(formatProfile)
     })
