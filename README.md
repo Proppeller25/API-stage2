@@ -89,6 +89,30 @@ An Express.js API that predicts gender, age, and nationality from a first name, 
 - Local: `http://localhost:3000`
 - Vercel: `https://your-project.vercel.app`
 
+## API Versioning
+
+- Current versioned base path: `/api/v1`
+- Backward-compatible base path: `/api`
+- All current Stage 2 endpoints are available on both paths for a safe transition to versioned clients.
+- All profile endpoints now require the header `X-API-Version: 1`.
+- Requests to profile endpoints without that header return `400 Bad Request` with:
+
+```json
+{
+  "status": "error",
+  "message": "API version header required"
+}
+```
+
+Examples:
+
+- `GET /api/v1/classify`
+- `POST /api/v1/profiles`
+- `GET /api/v1/profiles`
+- `GET /api/v1/profiles/search`
+- `GET /api/v1/profiles/:id`
+- `DELETE /api/v1/profiles/:id`
+
 ## API Endpoints
 
 ### `GET /`
@@ -209,6 +233,12 @@ GET /api/profiles?gender=male&country_id=NG&min_age=25&sort_by=age&order=desc&pa
   "page": 1,
   "limit": 10,
   "total": 2026,
+  "total_pages": 203,
+  "links": {
+    "self": "/api/v1/profiles?page=1&limit=10",
+    "next": "/api/v1/profiles?page=2&limit=10",
+    "prev": null
+  },
   "data": [ /* array of profile objects (full format) */ ]
 }
 ```

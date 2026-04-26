@@ -105,6 +105,7 @@ const Profile = typeof importedDataModel?.findOne === 'function'
 
 app.use(cors())
 app.use(express.json())
+const apiRouter = express.Router()
 
 
 
@@ -155,6 +156,7 @@ const connectDB = async () => {
 const isValidNumber = (value) => !Number.isNaN(Number(value))
 const isValidProbability = (value) => isValidNumber(value) && Number(value) >= 0 && Number(value) <= 1
 const isValidPositiveInteger = (value) => Number.isInteger(Number(value)) && Number(value) > 0
+const API_VERSION = '1'
 
 const formatProfile = (profile) => ({
   id: profile.id,
@@ -186,6 +188,55 @@ const invalidExternalResponse = (res, externalApi) => (
   })
 )
 
+const requireApiVersionHeader = (req, res, next) => {
+  if (req.get('X-API-Version') !== API_VERSION) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'API version header required'
+    })
+  }
+
+  next()
+}
+
+const buildPaginatedResponse = (req, page, limit, total, data) => {
+  const totalPages = total === 0 ? 0 : Math.ceil(total / limit)
+  const query = new URLSearchParams()
+
+  Object.entries(req.query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      query.set(key, String(value))
+    }
+  })
+
+  query.set('page', String(page))
+  query.set('limit', String(limit))
+
+  const buildLink = (targetPage) => {
+    if (targetPage === null || targetPage < 1 || (totalPages > 0 && targetPage > totalPages)) {
+      return null
+    }
+
+    const linkQuery = new URLSearchParams(query)
+    linkQuery.set('page', String(targetPage))
+    return `${req.baseUrl}${req.path}?${linkQuery.toString()}`
+  }
+
+  return {
+    status: 'success',
+    page,
+    limit,
+    total,
+    total_pages: totalPages,
+    links: {
+      self: buildLink(page),
+      next: page < totalPages ? buildLink(page + 1) : null,
+      prev: page > 1 && totalPages > 0 ? buildLink(page - 1) : null
+    },
+    data
+  }
+}
+
 json.forEach(profile => {
   const name = profile.country_name?.toLowerCase()
   const id = profile.country_id
@@ -198,8 +249,9 @@ app.get('/', (req, res) => {
   res.json({ message: 'Hello from the server!' })
 })
 
+apiRouter.use('/profiles', requireApiVersionHeader)
 
-app.get('/api/classify', async (req, res) => {
+apiRouter.get('/classify', async (req, res) => {
 
   try {
     await connectDB()
@@ -244,7 +296,7 @@ app.get('/api/classify', async (req, res) => {
   }
 })
 
-app.post('/api/profiles', async(req, res) => {
+apiRouter.post('/profiles', async(req, res) => {
   try{
     await connectDB()
     const {name} = req.body || {}
@@ -319,7 +371,7 @@ app.post('/api/profiles', async(req, res) => {
 
 
 
-app.get('/api/profiles', async (req, res) => {
+apiRouter.get('/profiles', async (req, res) => {
   try{
     await connectDB()
     res.setHeader('Access-Control-Allow-Origin', '*')
@@ -329,7 +381,8 @@ app.get('/api/profiles', async (req, res) => {
     let sortQuery
     let skip
     const maxPageLimit = 50
-    let maxLimit = Number(limit) > maxPageLimit ? maxPageLimit : Number(limit)
+    const maxLimit = Number(limit) > maxPageLimit ? maxPageLimit : Number(limit)
+    const currentPage = Number(page) || 1
     const sortingOptions = ['created_at', 'age', 'gender_probability']
     const orderOptions = ['asc', 'desc']
     const genderOptions = ['male', 'female']
@@ -384,20 +437,15 @@ app.get('/api/profiles', async (req, res) => {
       sortQuery = { [sort_by]: sortOrder }
     }
     if (page) {
-      const pageNumber = Number(page)
-      skip = (pageNumber - 1) * maxLimit
+      skip = (currentPage - 1) * maxLimit
     }
     
     const foundData = await Profile.find(filters).sort(sortQuery).skip(skip || 0).limit(maxLimit || 10)
     const total = await Profile.countDocuments(filters)
 
-    res.status(200).json({
-      status: "success",
-      page: Number(page) || 1,
-      limit: maxLimit || 10,
-      total,
-      data: foundData.map(formatProfile)
-    })
+    res.status(200).json(
+      buildPaginatedResponse(req, currentPage, maxLimit || 10, total, foundData.map(formatProfile))
+    )
 
   } catch(error) {
     return res.status(500).json({
@@ -407,14 +455,15 @@ app.get('/api/profiles', async (req, res) => {
   }
 })
 
-app.get('/api/profiles/search', async (req, res) => {
+apiRouter.get('/profiles/search', async (req, res) => {
   try {
     await connectDB()
     res.setHeader('Access-Control-Allow-Origin', '*')
     const {q, page = 1, limit = 10 } = req.query
     let skip
     const maxPageLimit = 50
-    let maxLimit = Number(limit) > maxPageLimit ? maxPageLimit : Number(limit)
+    const maxLimit = Number(limit) > maxPageLimit ? maxPageLimit : Number(limit)
+    const currentPage = Number(page) || 1
 
     if (!q || q.trim().length === 0) return res.status(400).json({ status: "error", message: "Missing or empty search query" })
     if(typeof q !== "string") return res.status(422).json({ status: "error", message: "Invalid query parameters" })
@@ -526,20 +575,15 @@ app.get('/api/profiles/search', async (req, res) => {
 
     
     if (page) {
-      const pageNumber = Number(page)
-      skip = (pageNumber - 1) * maxLimit
+      skip = (currentPage - 1) * maxLimit
     }
 
     const foundData = await Profile.find(filters).skip(skip || 0).limit(maxLimit || 0)
     const total = hasAnyFilter ? await Profile.countDocuments(filters) : foundData.length
 
-    res.status(200).json({
-      status: "success",
-      page: Number(page) || 1,
-      limit: maxLimit > total ? total : maxLimit || 10,
-      total,
-      data: foundData.map(formatProfile)
-    })
+    res.status(200).json(
+      buildPaginatedResponse(req, currentPage, maxLimit || 10, total, foundData.map(formatProfile))
+    )
 
   } catch (error){
     return res.status(500).json({
@@ -549,7 +593,7 @@ app.get('/api/profiles/search', async (req, res) => {
   }
 })
 
-app.get('/api/profiles/:id', async (req, res) => {
+apiRouter.get('/profiles/:id', async (req, res) => {
   try{
     const {id} = req.params
     await connectDB()
@@ -572,7 +616,7 @@ app.get('/api/profiles/:id', async (req, res) => {
   }
 })
 
-app.delete('/api/profiles/:id', async (req, res) => {
+apiRouter.delete('/profiles/:id', async (req, res) => {
   try{
     const {id} = req.params
     res.setHeader('Access-Control-Allow-Origin', '*')
@@ -591,6 +635,9 @@ app.delete('/api/profiles/:id', async (req, res) => {
     })
   }
 })
+
+app.use('/api', apiRouter)
+app.use('/api/v1', apiRouter)
 
 if (require.main === module && process.env.ENVIRONMENT !== 'production') {
   connectDB()
