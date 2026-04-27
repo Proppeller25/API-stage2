@@ -13,7 +13,7 @@ const ACCESS_TOKEN_EXPIRES_IN = '3m'
 const REFRESH_TOKEN_EXPIRES_IN = '5m'
 const ACCESS_TOKEN_COOKIE_MAX_AGE = 3 * 60 * 1000
 const REFRESH_TOKEN_COOKIE_MAX_AGE = 5 * 60 * 1000
-const OAUTH_STATE_COOKIE_NAME = 'oauth_state'
+const OAUTH_PENDING_COOKIE_NAME = 'oauth_pending'
 const OAUTH_STATE_COOKIE_MAX_AGE = 10 * 60 * 1000
 
 const ensureAuthConfig = () => {
@@ -102,18 +102,31 @@ const clearAuthCookies = (res) => {
   res.clearCookie('refresh_token', cookieOptions)
 }
 
-const setOauthStateCookie = (res, stateValue) => {
-  res.cookie(OAUTH_STATE_COOKIE_NAME, stateValue, {
+const setOauthPendingCookie = (res, pendingLoginData) => {
+  res.cookie(OAUTH_PENDING_COOKIE_NAME, JSON.stringify(pendingLoginData), {
     ...getCookieOptions(),
     httpOnly: true,
-    maxAge: OAUTH_STATE_COOKIE_MAX_AGE
+    maxAge: OAUTH_STATE_COOKIE_MAX_AGE,
+    signed: true
   })
 }
 
-const clearOauthStateCookie = (res) => {
-  res.clearCookie(OAUTH_STATE_COOKIE_NAME, {
+const readOauthPendingCookie = (req) => {
+  const encodedValue = req.signedCookies?.[OAUTH_PENDING_COOKIE_NAME]
+  if (!encodedValue) return null
+
+  try {
+    return JSON.parse(encodedValue)
+  } catch (error) {
+    return null
+  }
+}
+
+const clearOauthPendingCookie = (res) => {
+  res.clearCookie(OAUTH_PENDING_COOKIE_NAME, {
     ...getCookieOptions(),
-    httpOnly: true
+    httpOnly: true,
+    signed: true
   })
 }
 
@@ -280,7 +293,11 @@ const redirectToGithub = async (req, res) => {
     const state = createStateValue(mode)
     const githubAuthorizeUrl = buildGithubAuthorizeUrl(state, codeChallenge)
 
-    setOauthStateCookie(res, state)
+    setOauthPendingCookie(res, {
+      state,
+      mode,
+      pkceRequired: mode === 'cli' && Boolean(codeChallenge)
+    })
     return res.redirect(githubAuthorizeUrl)
   } catch (error) {
     return res.status(500).json({
@@ -306,7 +323,7 @@ const githubCallback = async (req, res) => {
     }
 
     const stateData = readStateValue(state)
-    const storedState = req.cookies?.[OAUTH_STATE_COOKIE_NAME]
+    const pendingLogin = readOauthPendingCookie(req)
 
     if (!stateData || !stateData.nonce) {
       return res.status(400).json({
@@ -315,10 +332,17 @@ const githubCallback = async (req, res) => {
       })
     }
 
-    if (!storedState || storedState !== state) {
+    if (!pendingLogin || pendingLogin.state !== state || pendingLogin.mode !== stateData.mode) {
       return res.status(400).json({
         status: 'error',
         message: 'OAuth state validation failed'
+      })
+    }
+
+    if (pendingLogin.pkceRequired && !codeVerifier) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'PKCE code verifier is required for this login flow'
       })
     }
 
@@ -326,7 +350,7 @@ const githubCallback = async (req, res) => {
     const githubUser = await fetchGithubUserProfile(githubAccessToken)
     const user = await findOrCreateUserFromGithub(githubUser)
     const { accessToken, refreshToken } = await saveLoginSession(user)
-    clearOauthStateCookie(res)
+    clearOauthPendingCookie(res)
 
     if (stateData.mode === 'cli') {
       return sendCliLoginResponse(res, user, accessToken, refreshToken)
@@ -437,7 +461,7 @@ const logout = async (req, res) => {
 
     clearAuthCookies(res)
     clearCsrfCookies(res)
-    clearOauthStateCookie(res)
+    clearOauthPendingCookie(res)
 
     return res.status(200).json({
       status: 'success',

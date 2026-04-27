@@ -84,7 +84,7 @@ const buildPaginatedResponse = (req, page, limit, total, data) => {
   }
 }
 
-const buildProfileFiltersAndSort = (query) => {
+const buildProfileFiltersAndSort = (query, options = {}) => {
   const {
     gender,
     country_id,
@@ -107,8 +107,9 @@ const buildProfileFiltersAndSort = (query) => {
   const orderOptions = ['asc', 'desc']
   const genderOptions = ['male', 'female']
   const ageGroupOptions = ['child', 'teenager', 'adult', 'senior']
+  const shouldValidatePagination = options.validatePagination !== false
 
-  if (!isValidPositiveInteger(page) || !isValidPositiveInteger(limit)) {
+  if (shouldValidatePagination && (!isValidPositiveInteger(page) || !isValidPositiveInteger(limit))) {
     return { error: { status: 422, message: 'Invalid query parameters' } }
   }
 
@@ -477,11 +478,7 @@ const exportProfiles = async (req, res) => {
       return res.status(422).json({ status: 'error', message: 'Invalid export format' })
     }
 
-    const queryConfig = buildProfileFiltersAndSort({
-      ...req.query,
-      page: '1',
-      limit: '50'
-    })
+    const queryConfig = buildProfileFiltersAndSort(req.query, { validatePagination: false })
 
     if (queryConfig.error) {
       return res.status(queryConfig.error.status).json({ status: 'error', message: queryConfig.error.message })
