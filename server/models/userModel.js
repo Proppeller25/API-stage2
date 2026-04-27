@@ -22,7 +22,6 @@ const userModel = new mongoose.Schema({
   _id:{
     type: String,
     default: uuidv7,
-    unique: true
   },
   id:{
     type: String,

@@ -7,6 +7,7 @@ const json = require('./seed_profiles.json')
 require('dotenv').config()
 
 const profileRoutes = require('./routes/profileRoutes')
+const userRoutes = require('./routes/userRoutes')
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -95,6 +96,7 @@ app.use('/api', async (req, res, next) => {
 })
 
 app.use('/api', profileRoutes)
+app.use('/api', userRoutes)
 // app.use('/api/v1', profileRoutes)
 
 app.use((error, req, res, next) => {
