@@ -17,6 +17,7 @@ const auth = require('./middleware/auth')
 const rateLimit = require('./middleware/rateLimit')
 
 const app = express()
+const allowedOrigins = ['http://localhost:3001', 'http://localhost:5173']
 const PORT = process.env.PORT || 3000
 let connectionPromise = null
 
@@ -28,7 +29,10 @@ const apiRateLimit = rateLimit({
   keyGenerator: (req) => req.user?.id || req.ip || 'unknown'
 })
 
-app.use(cors())
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}))
 app.use(cookieParser(process.env.COOKIE_SECRET || process.env.JWT_SECRET || 'insighta-cookie-secret'))
 app.use(express.json())
 
