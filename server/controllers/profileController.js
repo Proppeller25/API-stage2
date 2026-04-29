@@ -207,7 +207,7 @@ json.forEach((profile) => {
 const registerProfile = async (req, res) => {
   try {
     const { name } = req.body || {}
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    
 
     if (name === undefined || name === null || (typeof name === 'string' && name.trim().length === 0) || name === "''") {
       return res.status(400).json({ status: 'error', message: 'Missing or empty name' })
@@ -274,7 +274,7 @@ const registerProfile = async (req, res) => {
 
 const getProfiles = async (req, res) => {
   try {
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    
     const queryConfig = buildProfileFiltersAndSort(req.query)
     if (queryConfig.error) {
       return res.status(queryConfig.error.status).json({ status: 'error', message: queryConfig.error.message })
@@ -298,7 +298,7 @@ const getProfiles = async (req, res) => {
 
 const searchProfiles = async (req, res) => {
   try {
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    
 
     const { q, page = 1, limit = 10 } = req.query
     const maxPageLimit = 50
@@ -430,7 +430,7 @@ const searchProfiles = async (req, res) => {
 const getProfileById = async (req, res) => {
   try {
     const { id } = req.params
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    
 
     const foundData = await Profile.findOne({ id })
 
@@ -453,7 +453,7 @@ const getProfileById = async (req, res) => {
 const deleteProfileById = async (req, res) => {
   try {
     const { id } = req.params
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    
 
     const deletedData = await Profile.findOneAndDelete({ id })
 
@@ -472,7 +472,7 @@ const deleteProfileById = async (req, res) => {
 
 const exportProfiles = async (req, res) => {
   try {
-    res.setHeader('Access-Control-Allow-Origin', '*')
+  
 
     if (req.query.format && req.query.format !== 'csv') {
       return res.status(422).json({ status: 'error', message: 'Invalid export format' })

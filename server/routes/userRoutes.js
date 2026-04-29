@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const rateLimit = require('../middleware/rateLimit')
 const { ensureCsrfSecret, verifyCsrfToken } = require('../middleware/csrf')
+const auth = require('../middleware/auth')
 const {
   redirectToGithub,
   githubCallback,
@@ -21,12 +22,12 @@ const authRateLimit = rateLimit({
 
 router.use('/auth', authRateLimit)
 
-router.get('/auth/github', ensureCsrfSecret, redirectToGithub)
-router.get('/auth/github/callback', githubCallback)
-router.post('/auth/refresh', verifyCsrfToken, refreshToken)
-router.post('/auth/logout', verifyCsrfToken, logout)
-router.post('/auth/cli/login', cliLoginWithToken)
+router.get('/auth/github', ensureCsrfSecret,  redirectToGithub)
+router.get('/auth/github/callback',  githubCallback)
+router.post('/auth/refresh', verifyCsrfToken,  refreshToken)
+router.post('/auth/logout', auth, verifyCsrfToken,  logout)
+router.post('/auth/cli/login',  cliLoginWithToken)
 router.post('/auth/cli/callback', cliOAuthCallback)
-router.get('/auth/me', getCurrentUser)
+router.get('/auth/me', auth, getCurrentUser)
 
 module.exports = router

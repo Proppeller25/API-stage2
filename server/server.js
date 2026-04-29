@@ -17,7 +17,12 @@ const auth = require('./middleware/auth')
 const rateLimit = require('./middleware/rateLimit')
 
 const app = express()
-const allowedOrigins = ['http://localhost:3001', 'http://localhost:5173']
+const allowedOrigins = [
+  'http://localhost:3001', 
+  'http://localhost:5173', 
+  'https://insighta-web-portal-black.vercel.app',
+  'https://egbebo-stage3.vercel.app'
+]
 const PORT = process.env.PORT || 3000
 let connectionPromise = null
 
@@ -177,7 +182,7 @@ const seedData = async () => {
   console.log('Database already seeded')
 }
 
-if (require.main === module && process.env.ENVIRONMENT !== 'production') {
+if (require.main === module) {
   connectDB()
     .then(() => {
       console.log('Connected to database')

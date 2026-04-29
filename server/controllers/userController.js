@@ -76,10 +76,11 @@ const saveLoginSession = async (user) => {
 }
 
 const getCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.ENVIRONMENT === 'production'
   return {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production'
+    sameSite: isProduction ? 'none' : 'lax',
+    secure: isProduction
   }
 }
 
@@ -99,8 +100,26 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
 
 const clearAuthCookies = (res) => {
   const cookieOptions = getCookieOptions()
-  res.clearCookie('access_token', cookieOptions)
-  res.clearCookie('refresh_token', cookieOptions)
+  res.clearCookie('access_token', { ...cookieOptions, path: '/' })
+  res.clearCookie('refresh_token', { ...cookieOptions, path: '/' })
+}
+
+const clearAllCookies = (req, res) => {
+  const cookieOptions = { ...getCookieOptions(), path: '/' }
+  const cookieNames = new Set([
+    ...Object.keys(req.cookies || {}),
+    ...Object.keys(req.signedCookies || {}),
+    'access_token',
+    'refresh_token',
+    'csrfSecret',
+    'XSRF-TOKEN',
+    OAUTH_PENDING_COOKIE_NAME
+  ])
+
+  cookieNames.forEach((cookieName) => {
+    const signed = Boolean(req.signedCookies?.[cookieName])
+    res.clearCookie(cookieName, { ...cookieOptions, signed })
+  })
 }
 
 const setOauthPendingCookie = (res, pendingLoginData) => {
@@ -472,7 +491,7 @@ const logout = async (req, res) => {
       }
     }
 
-    clearAuthCookies(res)
+    clearAllCookies(req, res)
     clearCsrfCookies(res)
     clearOauthPendingCookie(res)
 
@@ -546,13 +565,20 @@ const cliOAuthCallback = async (req, res) => {
   }
 }
 
+// userController.js
 const getCurrentUser = async (req, res) => {
   try {
-    // req.user is attached by auth middleware
-    const user = await User.findById(req.user.id).select('-refresh_token -refresh_token_expires_at');
-    if (!user) return res.status(404).json({ status: 'error', message: 'User not found' });
+    // req.user is set by auth middleware
+    if (!req.user || !req.user?.id) {
+      return res.status(401).json({ status: 'error', message: 'Not authenticated' });
+    }
+    const user = await User.findById(req.user?.id).select('-refresh_token -refresh_token_expires_at');
+    if (!user) {
+      return res.status(404).json({ status: 'error', message: 'User not found' });
+    }
     res.json({ status: 'success', user });
   } catch (err) {
+    console.error('getCurrentUser error:', err);
     res.status(500).json({ status: 'error', message: err.message });
   }
 }
