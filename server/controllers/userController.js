@@ -546,6 +546,17 @@ const cliOAuthCallback = async (req, res) => {
   }
 }
 
+const getCurrentUser = async (req, res) => {
+  try {
+    // req.user is attached by auth middleware
+    const user = await User.findById(req.user.id).select('-refresh_token -refresh_token_expires_at');
+    if (!user) return res.status(404).json({ status: 'error', message: 'User not found' });
+    res.json({ status: 'success', user });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+}
+
 
 
 module.exports = {
@@ -554,5 +565,6 @@ module.exports = {
   refreshToken,
   logout,
   cliLoginWithToken,
-  cliOAuthCallback
+  cliOAuthCallback,
+  getCurrentUser
 }

@@ -8,7 +8,8 @@ const {
   refreshToken,
   logout,
   cliLoginWithToken,
-  cliOAuthCallback
+  cliOAuthCallback,
+  getCurrentUser
 } = require('../controllers/userController')
 
 const authRateLimit = rateLimit({
@@ -26,5 +27,6 @@ router.post('/auth/refresh', verifyCsrfToken, refreshToken)
 router.post('/auth/logout', verifyCsrfToken, logout)
 router.post('/auth/cli/login', cliLoginWithToken)
 router.post('/auth/cli/callback', cliOAuthCallback)
+router.get('/auth/me', getCurrentUser)
 
 module.exports = router
