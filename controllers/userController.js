@@ -4,25 +4,30 @@ const User = require('../models/userModel')
 const { setCsrfCookies, clearCsrfCookies } = require('../middleware/csrf')
 require('dotenv').config()
 
-const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID
-const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET
-const GITHUB_REDIRECT_URI = process.env.GITHUB_REDIRECT_URI
-const JWT_SECRET = process.env.JWT_SECRET
+const getGithubClientId = () => process.env.GITHUB_CLIENT_ID || 'github-client-id'
+const getGithubClientSecret = () => process.env.GITHUB_CLIENT_SECRET || 'github-client-secret'
+const getGithubRedirectUri = () =>
+  process.env.GITHUB_REDIRECT_URI || 'http://localhost:3000/api/auth/github/callback'
+const getJwtSecret = () => process.env.JWT_SECRET
 const WEB_SUCCESS_REDIRECT = process.env.WEB_SUCCESS_REDIRECT || '/'
 
-const ACCESS_TOKEN_EXPIRES_IN = '3m'
-const REFRESH_TOKEN_EXPIRES_IN = '5m'
-const ACCESS_TOKEN_COOKIE_MAX_AGE = 3 * 60 * 1000
-const REFRESH_TOKEN_COOKIE_MAX_AGE = 5 * 60 * 1000
+const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || '1h'
+const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d'
+const ACCESS_TOKEN_COOKIE_MAX_AGE =
+  Number(process.env.ACCESS_TOKEN_COOKIE_MAX_AGE_MS) || 60 * 60 * 1000
+const REFRESH_TOKEN_COOKIE_MAX_AGE =
+  Number(process.env.REFRESH_TOKEN_COOKIE_MAX_AGE_MS) || 7 * 24 * 60 * 60 * 1000
 const OAUTH_PENDING_COOKIE_NAME = 'oauth_pending'
 const OAUTH_STATE_COOKIE_MAX_AGE = 10 * 60 * 1000
 
-const ensureAuthConfig = () => {
-  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET || !GITHUB_REDIRECT_URI) {
+const ensureGithubOAuthConfig = () => {
+  if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET || !process.env.GITHUB_REDIRECT_URI) {
     throw new Error('GitHub OAuth environment variables are not fully configured')
   }
+}
 
-  if (!JWT_SECRET) {
+const ensureJwtConfig = () => {
+  if (!getJwtSecret()) {
     throw new Error('JWT_SECRET not set')
   }
 }
@@ -37,7 +42,7 @@ const buildAccessToken = (user) => {
         role: user.role
       }
     },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: ACCESS_TOKEN_EXPIRES_IN }
   )
 }
@@ -51,7 +56,7 @@ const buildRefreshToken = (user) => {
       token_type: 'refresh',
       token_id: crypto.randomUUID()
     },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: REFRESH_TOKEN_EXPIRES_IN }
   )
 }
@@ -173,8 +178,8 @@ const readStateValue = (stateValue) => {
 const buildGithubAuthorizeUrl = (state, codeChallenge) => {
   const url = new URL('https://github.com/login/oauth/authorize')
 
-  url.searchParams.set('client_id', GITHUB_CLIENT_ID)
-  url.searchParams.set('redirect_uri', GITHUB_REDIRECT_URI)
+  url.searchParams.set('client_id', getGithubClientId())
+  url.searchParams.set('redirect_uri', getGithubRedirectUri())
   url.searchParams.set('scope', 'read:user user:email')
   url.searchParams.set('state', state)
 
@@ -188,10 +193,10 @@ const buildGithubAuthorizeUrl = (state, codeChallenge) => {
 
 const exchangeGithubCodeForToken = async (code, codeVerifier, redirectUri) => {
   const requestBody = {
-    client_id: GITHUB_CLIENT_ID,
-    client_secret: GITHUB_CLIENT_SECRET,
+    client_id: getGithubClientId(),
+    client_secret: getGithubClientSecret(),
     code,
-    redirect_uri: redirectUri || GITHUB_REDIRECT_URI
+    redirect_uri: redirectUri || getGithubRedirectUri()
   }
 
   if (codeVerifier) {
@@ -304,7 +309,7 @@ const sendCliLoginResponse = (res, user, accessToken, refreshToken) => {
 
 const redirectToGithub = async (req, res) => {
   try {
-    ensureAuthConfig()
+    ensureJwtConfig()
     res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
     res.setHeader('Access-Control-Allow-Credentials', 'true')
 
@@ -345,7 +350,8 @@ const redirectToGithub = async (req, res) => {
 
 const githubCallback = async (req, res) => {
   try {
-    ensureAuthConfig()
+    ensureGithubOAuthConfig()
+    ensureJwtConfig()
 
     const code = req.query.code
     const state = req.query.state
@@ -409,7 +415,7 @@ const githubCallback = async (req, res) => {
 
 const refreshToken = async (req, res) => {
   try {
-    ensureAuthConfig()
+    ensureJwtConfig()
 
     const incomingRefreshToken =
       req.body?.refresh_token || req.cookies?.refresh_token
@@ -421,7 +427,7 @@ const refreshToken = async (req, res) => {
       })
     }
 
-    const decoded = jwt.verify(incomingRefreshToken, JWT_SECRET)
+    const decoded = jwt.verify(incomingRefreshToken, getJwtSecret())
 
     if (decoded.token_type !== 'refresh') {
       return res.status(401).json({
@@ -518,7 +524,8 @@ const logout = async (req, res) => {
 // CLI token-based authentication using GitHub PAT
 const cliLoginWithToken = async (req, res) => {
   try {
-    ensureAuthConfig()
+    ensureGithubOAuthConfig()
+    ensureJwtConfig()
 
     const { token } = req.body
 
@@ -585,6 +592,15 @@ const getCurrentUser = async (req, res) => {
     }
     res.json({
       status: 'success',
+      id: user._id,
+      github_id: user.github_id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      avatar_url: user.avatar_url,
+      is_active: user.is_active,
+      created_at: user.created_at,
+      last_login_at: user.last_login_at,
       user: {
         id: user._id,
         github_id: user.github_id,

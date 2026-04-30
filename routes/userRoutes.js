@@ -26,10 +26,46 @@ const authRateLimit = rateLimit({
 
 router.use('/auth', authRateLimit)
 
-router.get('/auth/github', ensureCsrfSecret, redirectToGithub);
-router.get('/auth/github/callback', githubCallback);
-router.post('/auth/refresh', verifyCsrfToken, refreshToken);
-router.post('/auth/logout', verifyCsrfToken, logout);
+const allowAuthCors = (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*')
+  res.header('Access-Control-Allow-Credentials', 'true')
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-XSRF-Token, x-xsrf-token')
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204)
+  }
+
+  return next()
+}
+
+const methodNotAllowed = (allowedMethods) => (req, res) =>
+  res.status(405).json({
+    status: 'error',
+    message: `Method ${req.method} not allowed. Use ${allowedMethods.join(', ')}.`
+  })
+
+router.use('/auth', allowAuthCors)
+
+router.route('/auth/github')
+  .options((req, res) => res.sendStatus(204))
+  .get(ensureCsrfSecret, redirectToGithub)
+  .all(methodNotAllowed(['GET']))
+
+router.route('/auth/github/callback')
+  .options((req, res) => res.sendStatus(204))
+  .get(githubCallback)
+  .all(methodNotAllowed(['GET']))
+
+router.route('/auth/refresh')
+  .options((req, res) => res.sendStatus(204))
+  .post(verifyCsrfToken, refreshToken)
+  .all(methodNotAllowed(['POST']))
+
+router.route('/auth/logout')
+  .options((req, res) => res.sendStatus(204))
+  .post(verifyCsrfToken, logout)
+  .all(methodNotAllowed(['POST']))
 router.post('/auth/cli/login', cliLoginWithToken);
 router.post('/auth/cli/callback', cliOAuthCallback);
 router.get('/auth/me', auth, getCurrentUser);
