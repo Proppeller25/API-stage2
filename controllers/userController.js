@@ -305,6 +305,8 @@ const sendCliLoginResponse = (res, user, accessToken, refreshToken) => {
 const redirectToGithub = async (req, res) => {
   try {
     ensureAuthConfig()
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
 
     const mode = req.query.mode === 'cli' ? 'cli' : 'web'
     let codeChallenge = ''
@@ -347,7 +349,7 @@ const githubCallback = async (req, res) => {
 
     const code = req.query.code
     const state = req.query.state
-    
+
     if (!code) {
       return res.status(400).json({ status: 'error', message: 'Authorization code is missing' });
     }
@@ -398,7 +400,7 @@ const githubCallback = async (req, res) => {
     setCsrfCookies(res)
     return res.redirect(WEB_SUCCESS_REDIRECT)
   } catch (error) {
-    return res.status(500).json({
+    return res.status(400).json({
       status: 'error',
       message: error.message || 'Server error'
     })
@@ -574,20 +576,31 @@ const cliOAuthCallback = async (req, res) => {
 // userController.js
 const getCurrentUser = async (req, res) => {
   try {
-    // req.user is set by auth middleware
-    if (!req.user || !req.user?.id) {
+    if (!req.user || !req.user.id) {
       return res.status(401).json({ status: 'error', message: 'Not authenticated' });
     }
-    const user = await User.findById(req.user?.id).select('-refresh_token -refresh_token_expires_at');
+    const user = await User.findById(req.user.id).select('-refresh_token -refresh_token_expires_at');
     if (!user) {
       return res.status(404).json({ status: 'error', message: 'User not found' });
     }
-    res.json({ status: 'success', user });
+    res.json({
+      status: 'success',
+      user: {
+        id: user._id,
+        github_id: user.github_id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        avatar_url: user.avatar_url,
+        is_active: user.is_active,
+        created_at: user.created_at,
+        last_login_at: user.last_login_at
+      }
+    });
   } catch (err) {
-    console.error('getCurrentUser error:', err);
     res.status(500).json({ status: 'error', message: err.message });
   }
-}
+};
 
 
 

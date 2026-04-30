@@ -13,17 +13,18 @@ const {
   getCurrentUser
 } = require('../controllers/userController');
 
-// Use official rate limiter for auth endpoints
+
 const authRateLimit = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10,              // 10 requests per minute
-  message: { status: 'error', message: 'Too many requests, please try again later.' },
+  windowMs: 60 * 1000,
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-});
+  handler: (req, res) => {
+    res.status(429).json({ status: 'error', message: 'Too many requests, please try again later.' });
+  }
+})
 
-// Apply globally to all /auth routes
-router.use('/auth', authRateLimit);
+router.use('/auth', authRateLimit)
 
 router.get('/auth/github', ensureCsrfSecret, redirectToGithub);
 router.get('/auth/github/callback', githubCallback);
