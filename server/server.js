@@ -23,6 +23,19 @@ const allowedOrigins = [
   'https://insighta-web-portal-black.vercel.app',
   'https://egbebo-stage3.vercel.app'
 ]
+const corsOptions = {
+  credentials: true,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like curl, mobile apps) or in non-production
+    if (!origin || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  }
+}
 const PORT = process.env.PORT || 3000
 let connectionPromise = null
 
@@ -34,10 +47,7 @@ const apiRateLimit = rateLimit({
   keyGenerator: (req) => req.user?.id || req.ip || 'unknown'
 })
 
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true
-}))
+app.use(cors(corsOptions))
 app.use(cookieParser(process.env.COOKIE_SECRET || process.env.JWT_SECRET || 'insighta-cookie-secret'))
 app.use(express.json())
 
@@ -86,7 +96,6 @@ app.get('/api/classify', auth, apiRateLimit, async (req, res) => {
     await connectDB()
 
     const { name } = req.query
-    res.setHeader('Access-Control-Allow-Origin', '*')
 
     if (!name || name.trim().length === 0 || name === "''") {
       return res.status(400).json({ status: 'error', message: 'Missing or empty name parameter' })

@@ -347,7 +347,13 @@ const githubCallback = async (req, res) => {
 
     const code = req.query.code
     const state = req.query.state
-
+    
+    if (!code) {
+      return res.status(400).json({ status: 'error', message: 'Authorization code is missing' });
+    }
+    if (!state) {
+      return res.status(400).json({ status: 'error', message: 'State parameter is missing' });
+    }
     // Read the pending login data from the cookie
     const pendingLogin = readOauthPendingCookie(req)
     const stateData = readStateValue(state)
